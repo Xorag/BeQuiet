@@ -1,4 +1,4 @@
-version = "v10.1.5.1"
+version = "v10.1.7.1"
 
 WL_DEFAULT = {
 	"Temple of Fal'adora",
