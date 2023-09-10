@@ -66,8 +66,8 @@ local f = CreateFrame("Frame")
 function close_head()
 	-- TODO: work in logic for instances - BQ_SUPPRESS_INSTANCES - boolean true and false
 	local inInstance, instanceType = IsInInstance()
-	if BQ_SUPPRESS_INSTANCES then
-
+	if BQ_SUPPRESS_INSTANCES == true and inInstance == true then
+		block_head();
 	end
 
 	--Query current zone and subzone when talking head is triggered
