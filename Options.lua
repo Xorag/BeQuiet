@@ -46,9 +46,8 @@ function Options:init()
                 --width = "full",
                 type = "toggle",
                 set = function(optionsMenu, isMuted)
-                    local doTalk = not isMuted
-                    msg_user("Voiceovers are " .. (doTalk and "muted." or "allowed."))
-                    VO_ENABLED = convertTo0or1(doTalk)
+                    msg_user("Voiceovers are " .. (isMuted and "muted." or "allowed."))
+                    VO_ENABLED = convertTo0or1(not isMuted)
                 end,
                 get = function()
                     return not is_true(VO_ENABLED)
@@ -81,29 +80,28 @@ function Options:init()
             },
 
             -------------------------------------------------------------------------------
-            -- Style
+            -- Mode
             -------------------------------------------------------------------------------
 
-            style_header = {
+            mode_header = {
                 order = 149,
-                name = "Style",
+                name = "Mode",
                 type = 'header',
             },
-            style_help = {
+            mode_help = {
                 order = 150,
                 type = 'description',
-                name = "There are two styles of BeQuiet: activate eveywhere by default but exclude specific zones zone;  Or enable zone by zone. \r\r",
+                name = "There are two modes of BeQuiet: activate everywhere by default but permit specific zones;  Or suppress zone by zone. \r\r",
             },
-            style = {
+            mode = {
                 order = 170,
-                name = "Style",
-                desc = "Two approaches to BeQuiet are provided: activate eveywhere by default but exclude specific zones zone;  Or enable zone by zone.",
+                name = "Mode",
                 width = "full",
                 type = "select",
                 style = "radio", --"dropdown", "radio"
                 values = {
-                    [true] = "BeQuiet everywhere by default.  Enable zone by zone via the Whitelist",
-                    [false] = "BeQuiet nowhere by default.  Disable zone by zone via the Blacklist",
+                    [true] = "BeQuiet everywhere by default.  Zones in the Whitelist will not be suppressed.",
+                    [false] = "BeQuiet nowhere by default.  Only zones in the Blacklist will be suppressed.",
                 },
                 sorting = { true,false },
                 set = function(optionsMenu, val)
@@ -111,7 +109,7 @@ function Options:init()
                     --msg_user(val and allow_msg or block_msg)
                 end,
                 get = function()
-                    return use_style_blacklist()
+                    return is_mode_not_blacklist()
                 end,
             },
 
@@ -145,20 +143,20 @@ function Options:init()
 
             whitelist_header = {
                 order = 200,
-                hidden = use_style_whitelist,
+                hidden = is_mode_not_whitelist,
                 name = "Whitelist",
                 type = 'header',
             },
             whitelist_help = {
                 order = 205,
-                hidden = use_style_whitelist,
+                hidden = is_mode_not_whitelist,
                 type = 'description',
                 name = "Zones in the whitelist will be allowed to play the talking heads.",
             },
             whitelist_current_zone = {
                 order = 210,
-                hidden = use_style_whitelist,
-                name = "Toggle Current Zone",
+                hidden = is_mode_not_whitelist,
+                name = function() return make_btn_text_for_toggle_current_zone(WHITELIST, "white") or "No Zone"  end, -- "Toggle Current Zone",
                 desc = "Allow talking heads in your current major zone (e.g. Orgrimmar or Stormwind)",
                 width = "double",
                 type = "execute",
@@ -166,16 +164,18 @@ function Options:init()
             },
             whitelist_current_subzone = {
                 order = 220,
-                hidden = use_style_whitelist,
-                name = "Toggle Current Subzone",
+                hidden = is_mode_not_whitelist,
+                name = function() return make_btn_text_for_toggle_current_subzone(WHITELIST, "white") or "No Subzone"  end, -- "Toggle Current Subzone",
+                disabled = function() return nil == make_btn_text_for_toggle_current_subzone(WHITELIST, "white")  end,
                 desc = "Allow talking heads in your current subzone (e.g. Valley of Strength or Old Town)",
                 width = "double",
                 type = "execute",
                 func = function() toggle_current_subzone(WHITELIST, "white")  end,
             },
             whitelist_display = {
+                -- NOT USED - replaced by hover text
                 order = 229,
-                hidden = use_style_whitelist,
+                hidden = true, -- use_mode_whitelist,
                 disabled = true,
                 name = "", -- "Current Whitelist",
                 desc = "List of all zones currently in the whitelist.",
@@ -188,9 +188,9 @@ function Options:init()
             },
             whitelist_picker = {
                 order = 230,
-                hidden = use_style_whitelist,
-                name = "Select", -- "Current Whitelist",
-                desc = "List of all zones currently in the whitelist.",
+                hidden = is_mode_not_whitelist,
+                name = "Current Whitelist",
+                desc = table.concat(WHITELIST, "\r"),
                 width = "double",
                 type = "select",
                 values = WHITELIST,
@@ -203,7 +203,7 @@ function Options:init()
             },
             whitelist_listing_killer = {
                 order = 230,
-                hidden = use_style_whitelist,
+                hidden = is_mode_not_whitelist,
                 name = "Delete Selection from Whitelist",
                 desc = "Allow talking heads in your current subzone (e.g. Valley of Strength or Old Town)",
                 width = "double",
@@ -223,13 +223,13 @@ function Options:init()
             },
             whitelist_linebreak = {
                 order = 235,
-                hidden = use_style_whitelist,
+                hidden = is_mode_not_whitelist,
                 type = 'description',
                 name = "",
             },
             whitelist_RESET = {
                 order = 250,
-                hidden = use_style_whitelist,
+                hidden = is_mode_not_whitelist,
                 name = "Reset Whitelist",
                 desc = "This will ERASE the current whitelist and set it to the default:".. table.concat(WL_DEFAULT, ", "),
                 --width = "double",
@@ -241,9 +241,10 @@ function Options:init()
             },
             whitelist_ERASE = {
                 order = 240,
-                hidden = use_style_whitelist,
+                hidden = is_mode_not_whitelist,
                 name = "Erase Whitelist",
                 desc = "This will ERASE the current whitelist.",
+                disabled = function() return WHITELIST[1] == nil end,
                 --width = "double",
                 type = "execute",
                 confirm = true,
@@ -258,20 +259,20 @@ function Options:init()
 
             blacklist_header = {
                 order = 300,
-                hidden = use_style_blacklist,
+                hidden = is_mode_not_blacklist,
                 name = "Blacklist",
                 type = 'header',
             },
             blacklist_help = {
                 order = 305,
-                hidden = use_style_blacklist,
+                hidden = is_mode_not_blacklist,
                 type = 'description',
                 name = "Zones in the blacklist will BeQuiet.",
             },
             blacklist_current_zone = {
                 order = 310,
-                hidden = use_style_blacklist,
-                name = "Toggle Current Zone",
+                hidden = is_mode_not_blacklist,
+                name = function() return make_btn_text_for_toggle_current_zone(BLACKLIST, "black") or "No Zone"  end, -- "Toggle Current Zone",
                 desc = "Block talking heads in your current major zone (e.g. Orgrimmar or Stormwind)",
                 width = "double",
                 type = "execute",
@@ -279,16 +280,18 @@ function Options:init()
             },
             blacklist_current_subzone = {
                 order = 320,
-                hidden = use_style_blacklist,
-                name = "Toggle Current Subzone",
+                hidden = is_mode_not_blacklist,
+                name = function() return make_btn_text_for_toggle_current_subzone(BLACKLIST, "black") or "No Subzone"  end, -- "Toggle Current Subzone",
+                disabled = function() return nil == make_btn_text_for_toggle_current_subzone(BLACKLIST, "black")  end,
                 desc = "Block talking heads in your current subzone (e.g. Valley of Strength or Old Town)",
                 width = "double",
                 type = "execute",
                 func = function() toggle_current_subzone(BLACKLIST, "black")  end,
             },
             blacklist_display = {
+                -- NOT USED - replaced by hover text
                 order = 329,
-                hidden = use_style_blacklist,
+                hidden = true, -- use_mode_blacklist,
                 disabled = true,
                 name = "", -- "Current Blacklist",
                 desc = "List of all zones currently in the whitelist.",
@@ -301,9 +304,9 @@ function Options:init()
             },
             blacklist_picker = {
                 order = 330,
-                hidden = use_style_blacklist,
-                name = "", -- "Current Blacklist",
-                desc = "List of all zones currently in the blacklist.",
+                hidden = is_mode_not_blacklist,
+                name = "Current Blacklist",
+                desc = table.concat(BLACKLIST, "\r"),
                 width = "double",
                 type = "select",
                 values = BLACKLIST,
@@ -316,7 +319,7 @@ function Options:init()
             },
             blacklist_listing_killer = {
                 order = 330,
-                hidden = use_style_blacklist,
+                hidden = is_mode_not_blacklist,
                 name = "Delete Selection from Blacklist",
                 desc = "Allow talking heads in your current subzone (e.g. Valley of Strength or Old Town)",
                 width = "double",
@@ -336,15 +339,16 @@ function Options:init()
             },
             blacklist_linebreak = {
                 order = 335,
-                hidden = use_style_blacklist,
+                hidden = is_mode_not_blacklist,
                 type = 'description',
                 name = "",
             },
-            blacklist_RESET = {
+            blacklist_ERASE = {
                 order = 340,
-                hidden = use_style_blacklist,
+                hidden = is_mode_not_blacklist,
                 name = "Erase Blacklist",
                 desc = "This will ERASE the current blacklist.",
+                disabled = function() return BLACKLIST[1] == nil end,
                 --width = "double",
                 type = "execute",
                 confirm = true,
@@ -352,6 +356,33 @@ function Options:init()
                     replace_array(BL_DEFAULT, BLACKLIST)
                 end,
             },
+
+            -------------------------------------------------------------------------------
+            -- Instances Implicitly Blacklisted
+            -------------------------------------------------------------------------------
+
+            instance_linebreak = {
+                order = 400,
+                hidden = is_mode_not_blacklist,
+                type = 'description',
+                name = "",
+            },
+            instance = {
+                order = 410,
+                hidden = is_mode_not_blacklist,
+                name = "Instances",
+                desc = "Always BeQuiet in instances, dungeons, raids, etc.",
+                --width = "full",
+                type = "toggle",
+                set = function(optionsMenu, val)
+                    BQ_SUPPRESS_INSTANCES = val
+                    msg_user("Instance are " .. (val and "supressed." or "free."))
+                end,
+                get = function()
+                    return BQ_SUPPRESS_INSTANCES
+                end,
+            },
+
         },
     }
 

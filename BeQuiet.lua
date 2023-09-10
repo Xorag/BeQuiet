@@ -46,6 +46,10 @@ if VERBOSE == nil then
 	VERBOSE = 1
 end
 
+if BQ_SUPPRESS_INSTANCES == nil then
+	BQ_SUPPRESS_INSTANCES = false
+end
+
 --Default whitelist includes the withered army training zones from legion and island expeditions from BFA
 if WHITELIST == nil then
 	WHITELIST = WL_DEFAULT
@@ -60,6 +64,12 @@ end
 local f = CreateFrame("Frame")
 
 function close_head()
+	-- TODO: work in logic for instances - BQ_SUPPRESS_INSTANCES - boolean true and false
+	local inInstance, instanceType = IsInInstance()
+	if BQ_SUPPRESS_INSTANCES then
+
+	end
+
 	--Query current zone and subzone when talking head is triggered
 	subZoneName = GetSubZoneText();
 	zoneName = GetZoneText();
@@ -131,34 +141,50 @@ function convertTo0or1(isTrue)
 	return isTrue and 1 or 0
 end
 
-function use_style_blacklist()
+function is_mode_not_blacklist()
 	return is_true(ENABLED)
 end
 
-function use_style_whitelist()
-	return not use_style_blacklist()
+function is_mode_not_whitelist()
+	return not is_true(ENABLED)
+end
+
+function make_btn_text_for_toggle_current_zone(list, list_name)
+	local zone = GetZoneText()
+	return make_btn_text_for_zone_toggle(zone, list, list_name)
+end
+
+function make_btn_text_for_toggle_current_subzone(list, list_name)
+	local zone = GetSubZoneText()
+	return make_btn_text_for_zone_toggle(zone, list, list_name)
+end
+
+function make_btn_text_for_zone_toggle(zone, list, name)
+	if is_empty(zone) then
+		return nil
+	end
+	local verb
+	if has_value(list, zone) then
+		verb = "Remove"
+	else
+		verb = "Add"
+	end
+	return verb .." ".. zone
 end
 
 function toggle_current_zone(list, name)
-	zone = GetZoneText()
-	if is_empty(zone) then
-		msg_user("The current zone doesn't have a name.")
-		return
-	end
-	if has_value(list, zone) then
-		removeFirst(list, zone)
-		msg_user(zone .. ' removed from the '..name..'list.')
-	else
-		table.insert(list, zone)
-		msg_user(zone .. ' added to the '..name..'list.')
-	end
-	table.sort(list)
+	local zone = GetZoneText()
+	toggle_current_zone_or_subzone(zone, "subzone", list, name)
 end
 
 function toggle_current_subzone(list, name)
-	zone = GetSubZoneText()
+	local zone = GetSubZoneText()
+	toggle_current_zone_or_subzone(zone, "subzone", list, name)
+end
+
+function toggle_current_zone_or_subzone(zone, zone_type, list, name)
 	if is_empty(zone) then
-		msg_user("There isn't currently a subzone.")
+		msg_user("The current ".. zone_type .." doesn't have a name.")
 		return
 	end
 	if has_value(list, zone) then
