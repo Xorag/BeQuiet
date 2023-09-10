@@ -1,8 +1,12 @@
 ## Interface: 100107
-## Version: 10.1.7.2
+## Version: 10.1.7.3
 ## Title: BeQuiet
 ## Author: Xorag
 ## Notes: Suppresses talking chat head frame and audio
-## SavedVariables: ENABLED, VERBOSE, WHITELIST, BLACKLIST, VO_ENABLED
+## SavedVariables: ENABLED, VERBOSE, WHITELIST, BLACKLIST, VO_ENABLED, BQ_SHOW_HEADS, BQ_SUPPRESS_INSTANCES
+## AddonCompartmentFunc: BeQuiet_BlizCompartment_OnClick
+## IconTexture: 135975
 
+libs\libs.xml
+Options.lua
 BeQuiet.lua

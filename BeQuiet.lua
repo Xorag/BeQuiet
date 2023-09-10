@@ -1,4 +1,6 @@
-version = "v10.1.7.2"
+local ADDON_NAME, BQ = ...
+
+version = "v" .. C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or ""
 
 WL_DEFAULT = {
 	"Temple of Fal'adora",
@@ -15,8 +17,15 @@ WL_DEFAULT = {
 	"Verdant Wilds",
 	"The Dread Chain",
 	"Skittering Hollow",
-	"Torghast, Tower of the Damned"
+	"Torghast, Tower of the Damned",
+
+	-- New in v10.1.7.3
+	"Stormwind City",
+	"Orgrimmar",
+	"Valdrakken",
 }
+
+table.sort(WL_DEFAULT)
 
 BL_DEFAULT = {}
 
@@ -29,8 +38,16 @@ if VO_ENABLED == nil then
 	VO_ENABLED = 0
 end
 
+if BQ_SHOW_HEADS == nil then
+	BQ_SHOW_HEADS = true
+end
+
 if VERBOSE == nil then
 	VERBOSE = 1
+end
+
+if BQ_SUPPRESS_INSTANCES == nil then
+	BQ_SUPPRESS_INSTANCES = false
 end
 
 --Default whitelist includes the withered army training zones from legion and island expeditions from BFA
@@ -47,6 +64,12 @@ end
 local f = CreateFrame("Frame")
 
 function close_head()
+	-- TODO: work in logic for instances - BQ_SUPPRESS_INSTANCES - boolean true and false
+	local inInstance, instanceType = IsInInstance()
+	if BQ_SUPPRESS_INSTANCES then
+
+	end
+
 	--Query current zone and subzone when talking head is triggered
 	subZoneName = GetSubZoneText();
 	zoneName = GetZoneText();
@@ -65,13 +88,18 @@ end
 function block_head()
 	--Close the talking head
 	--TalkingHeadFrame:CloseImmediately(); pre 10.0.7
-	TalkingHeadFrame:Hide()
+	if not is_true(BQ_SHOW_HEADS) then
+		TalkingHeadFrame:Hide()
+	end
 	if TalkingHeadFrame.voHandle ~= nil and VO_ENABLED == 0 then
 		--C_Timer.After(0.025, function() StopSound(TalkingHeadFrame.voHandle) end);
 		C_Timer.After(0.025, function() if TalkingHeadFrame.voHandle then StopSound(TalkingHeadFrame.voHandle) end end);
 	end
 	if VERBOSE == 1 then
-		print("BeQuiet blocked a talking head! /bq verbose to turn this alert off.")
+		local blockedNothing = is_true(VO_ENABLED) and is_true(BQ_SHOW_HEADS)
+		if not blockedNothing then
+			msg_user("blocked a talking head! /bq verbose to turn this alert off.")
+		end
 	end
 end
 
@@ -79,6 +107,7 @@ end
 function f:OnEvent(event, ...)
 	if event == "PLAYER_LOGIN" then
 		hooksecurefunc(TalkingHeadFrame, "PlayCurrent", close_head);
+		BQ.Options:init()
 	end
 end
 
@@ -100,128 +129,192 @@ function has_value (tab, val)
 	return false
 end
 
+function is_empty(s)
+	return s == nil or s == ''
+end
+
+function is_true(val_0_or_1)
+	return val_0_or_1 == 1
+end
+
+function convertTo0or1(isTrue)
+	return isTrue and 1 or 0
+end
+
+function is_mode_not_blacklist()
+	return is_true(ENABLED)
+end
+
+function is_mode_not_whitelist()
+	return not is_true(ENABLED)
+end
+
+function make_btn_text_for_toggle_current_zone(list, list_name)
+	local zone = GetZoneText()
+	return make_btn_text_for_zone_toggle(zone, list, list_name)
+end
+
+function make_btn_text_for_toggle_current_subzone(list, list_name)
+	local zone = GetSubZoneText()
+	return make_btn_text_for_zone_toggle(zone, list, list_name)
+end
+
+function make_btn_text_for_zone_toggle(zone, list, name)
+	if is_empty(zone) then
+		return nil
+	end
+	local verb
+	if has_value(list, zone) then
+		verb = "Remove"
+	else
+		verb = "Add"
+	end
+	return verb .." ".. zone
+end
+
+function toggle_current_zone(list, name)
+	local zone = GetZoneText()
+	toggle_current_zone_or_subzone(zone, "subzone", list, name)
+end
+
+function toggle_current_subzone(list, name)
+	local zone = GetSubZoneText()
+	toggle_current_zone_or_subzone(zone, "subzone", list, name)
+end
+
+function toggle_current_zone_or_subzone(zone, zone_type, list, name)
+	if is_empty(zone) then
+		msg_user("The current ".. zone_type .." doesn't have a name.")
+		return
+	end
+	if has_value(list, zone) then
+		removeFirst(list, zone)
+		msg_user(zone .. ' removed from the '..name..'list.')
+	else
+		table.insert(list, zone)
+		msg_user(zone .. ' added to the '..name..'list.')
+	end
+	table.sort(list)
+end
+
+-- because WHITELIST = WL_DEFAULT makes both arrays point to the same memory location
+-- after which, altering one alters both simultaneously
+-- and you are no longer able to use WL_DEFAULT as an original, unchanged value
+function replace_array(src, target)
+	for i, v in ipairs(target) do
+		--msg_user("erasing",i,v)
+		target[i] = nil
+	end
+
+	for i, v in ipairs(src) do
+		--msg_user("adding",i,v)
+		target[i] = v
+	end
+end
+
+BQ_RED = "|cffff3333"
+function msg_user(msg)
+	print(BQ_RED..ADDON_NAME.."|r: "..(msg or ""))
+end
+
 --Slash command function
 function MyAddonCommands(args)
-	allow_msg = 'BeQuiet disabled - now allowing talking heads except for blacklisted zones.'
-	block_msg = 'BeQuiet enabled - now blocking talking heads except for whitelisted zones.'
+	allow_msg = 'disabled - now allowing talking heads except for blacklisted zones.'
+	block_msg = 'enabled - now blocking talking heads except for whitelisted zones.'
+
+	if args == 'config' then
+		Settings.OpenToCategory(ADDON_NAME)
+	end
 
 	if args == 'off' then
 		ENABLED = 0
-		print(allow_msg)
+		msg_user(allow_msg)
 	end
 
 	if args == 'on' then
 		ENABLED = 1
-		print(block_msg)
+		msg_user(block_msg)
 	end
 
 	if args == 'toggle' then
 		if ENABLED == 0 then
 			ENABLED = 1
-			print(block_msg)
+			msg_user(block_msg)
 		elseif ENABLED == 1 then
 			ENABLED = 0
-			print(allow_msg)
+			msg_user(allow_msg)
 		end
 	end
 
 	if args == 'whitelist currentzone' then
-		zone = GetZoneText()
-		if has_value(WHITELIST, zone) then
-			removeFirst(WHITELIST, zone)
-			print(zone .. ' removed from the whitelist.')
-		else
-			table.insert(WHITELIST, zone)
-			print(zone .. ' added to the whitelist.')
-		end
+		toggle_current_zone(WHITELIST, "white")
 	end
 
 	if args == 'whitelist currentsubzone' then
-		zone = GetSubZoneText()
-		if has_value(WHITELIST, zone) then
-			removeFirst(WHITELIST, zone)
-			print(zone .. ' removed from the whitelist.')
-		else
-			table.insert(WHITELIST, zone)
-			print(zone .. ' added to the whitelist.')
-		end
+		toggle_current_subzone(WHITELIST, "white")
 	end
 	
 	if args == 'blacklist currentzone' then
-		zone = GetZoneText()
-		if has_value(BLACKLIST, zone) then
-			removeFirst(BLACKLIST, zone)
-			print(zone .. ' removed from the blacklist.')
-		else
-			table.insert(BLACKLIST, zone)
-			print(zone .. ' added to the blacklist.')
-		end
+		toggle_current_zone(BLACKLIST, "black")
 	end
 
 	if args == 'blacklist currentsubzone' then
-		zone = GetSubZoneText()
-		if has_value(BLACKLIST, zone) then
-			removeFirst(BLACKLIST, zone)
-			print(zone .. ' removed from the blacklist.')
-		else
-			table.insert(BLACKLIST, zone)
-			print(zone .. ' added to the blacklist.')
-		end
+		toggle_current_subzone(BLACKLIST, "black")
 	end
 
 	if args == 'delete' then
 		WHITELIST = {}
 		BLACKLIST = {}
-		print('Whitelist and blacklist have been deleted.')
+		msg_user('Whitelist and blacklist have been deleted.')
 	end
 
 	if args == 'reset' then
 		WHITELIST = WL_DEFAULT
 		BLACKLIST = BL_DEFAULT
-		print('Whitelist and blacklist have been reset to default.')
+		msg_user('Whitelist and blacklist have been reset to default.')
 	end
 
 	if args == 'show' then
-		print('whitelist: ' .. table.concat(WHITELIST, ', '))
-		print('blacklist: ' .. table.concat(BLACKLIST, ', '))
+		msg_user('whitelist: ' .. table.concat(WHITELIST, ', '))
+		msg_user('blacklist: ' .. table.concat(BLACKLIST, ', '))
 	end
 
 	if args == 'verbose' then
 		if VERBOSE == 0 then
 			VERBOSE = 1
-			print('Verbose mode enabled. A chat message will print when a talking head is blocked.')
+			msg_user('Verbose mode enabled. A chat message will print when a talking head is blocked.')
 		elseif VERBOSE == 1 then
 			VERBOSE = 0
-			print('Verbose mode disabled.')
+			msg_user('Verbose mode disabled.')
 		end
 	end
 	
 	if args == 'vo on' then
 		VO_ENABLED = 1
-		print('VoiceOver enabled when talking head frame hidden')
+		msg_user('VoiceOver enabled when talking head frame hidden')
 	end
 
 	if args == 'vo off' then
 		VO_ENABLED = 0
-		print('VoiceOver disabled when talking head frame hidden')
+		msg_user('VoiceOver disabled when talking head frame hidden')
 	end
 
 	if args == 'vo toggle' then
 		if VO_ENABLED == 1 then
 			VO_ENABLED = 0
-			print('VoiceOver disabled when talking head frame hidden')
+			msg_user('VoiceOver disabled when talking head frame hidden')
 		else
 			VO_ENABLED = 1
-			print('VoiceOver enabled when talking head frame hidden')
+			msg_user('VoiceOver enabled when talking head frame hidden')
 		end
 	end
 
 	if args == 'whitelist' then
-		print('whitelist (currentzone | currentsubzone) - toggle whitelisting for the current major zone (Orgrimmar) or sub-zone (Valley of Strength).')
+		msg_user('whitelist (currentzone | currentsubzone) - toggle whitelisting for the current major zone (Orgrimmar) or sub-zone (Valley of Strength).')
 	end
 
 	if args == 'blacklist' then
-		print('blacklist (currentzone | currentsubzone) - toggle blacklisting for the current major zone (Orgrimmar) or sub-zone (Valley of Strength).')
+		msg_user('blacklist (currentzone | currentsubzone) - toggle blacklisting for the current major zone (Orgrimmar) or sub-zone (Valley of Strength).')
 	end
 
 	if args == 'vo' then
@@ -229,19 +322,21 @@ function MyAddonCommands(args)
 	end
 
 	if args == '' then
-		print('BeQuiet version ' .. version)
-		print('Options: on | off | toggle | verbose | whitelist | blacklist | reset | delete | show | vo')
-		print('-----')
+		msg_user('version ' .. version)
+		msg_user('Options: config | on | off | toggle | verbose | whitelist | blacklist | reset | delete | show | vo')
+		msg_user('-----')
 		if ENABLED == 1 then
-			print('BeQuiet is currently enabled.')
+			msg_user('is currently enabled.')
 		elseif ENABLED == 0 then
-			print('BeQuiet is currently disabled.')
+			msg_user('is currently disabled.')
 		end
 		if VERBOSE == 1 then
-			print('Verbose mode is currently enabled.')
+			msg_user('Verbose mode is currently enabled.')
 		elseif VERBOSE == 0 then
-			print('Verbose mode is currently disabled.')
+			msg_user('Verbose mode is currently disabled.')
 		end
+
+		msg_user("Talking heads are currently " .. (BQ_SHOW_HEADS and "shown." or "hidden."))
 	end
 end
 
