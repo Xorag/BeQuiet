@@ -1,10 +1,9 @@
 local ADDON_NAME, BQ = ...
 
-version = "v" .. C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or ""
+BQ.RED = "|cffff3333"
 
-BQ_RED = "|cffff3333"
 function msg_user(msg)
-	print(BQ_RED..ADDON_NAME.."|r: "..(msg or ""))
+	print(BQ.RED..ADDON_NAME.."|r: "..(msg or ""))
 end
 
 -- 12.0.0 Historically we never properly waited for the addon to load before handling variables so do it now
@@ -72,17 +71,66 @@ var_frame:SetScript("OnEvent", function(self, event, arg1)
 		if BLACKLIST == nil then
 			BLACKLIST = BL_DEFAULT
 		end
+
+		if BQ_ENABLE_ESCAPE == nil then
+			BQ_ENABLE_ESCAPE = false
+		end
+
+		_G["BINDING_NAME_BeQuiet_CloseTalkingHead"] = ADDON_NAME .. " - Close Talking Head" -- see Bindings.xml
+
+		BQ.versionLabel = "v" .. (C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "1")
 	end
 end)
 
+-------------------------------------------------------------------------------
+-- Keybinding to let the use manually close the talking head
+-------------------------------------------------------------------------------
+
+local keyNameToBind  = "Escape" -- will be temporarily stolen then restored to any existing bindings
+local isBound
+
+function add_tmp_keybind_that_closes()
+	if not BQ_ENABLE_ESCAPE then return end
+
+	if not isBound then
+		if InCombatLockdown() then return end
+		SetOverrideBinding(TalkingHeadFrame, true, keyNameToBind, "BeQuiet_CloseTalkingHead") -- see Bindings.xml
+		isBound = true
+	end
+end
+
+function remove_tmp_keybind_that_closes()
+	-- debug output to prove this is being called and by whom: all 3 Close* methods
+	--print("remove_tmp_keybind_that_closes() isBound =",isBound, "called by:")
+	--local stack = debugstack(1,3,0)
+	--DevTools_Dump(stack)
+
+	if InCombatLockdown() then return end
+	SetOverrideBinding(TalkingHeadFrame, true, keyNameToBind, nil)
+	isBound = false
+end
+
+function close_head_immediately()
+	TalkingHeadFrame:CloseImmediately()
+end
+
+GLOBAL_BeQuiet_CloseTalkingHead = close_head_immediately -- export into the global namespace for use by Bindings.xml
+
+-------------------------------------------------------------------------------
 --Create the frame
 local f = CreateFrame("Frame")
 
+-------------------------------------------------------------------------------
+-- Logic based on config options - decide if we're going to close the talking head
+-------------------------------------------------------------------------------
+
 function close_head()
+	local iDidItAll
+
 	-- TODO: work in logic for instances - BQ_SUPPRESS_INSTANCES - boolean true and false
 	local inInstance, instanceType = IsInInstance()
 	if BQ_SUPPRESS_INSTANCES == true and inInstance == true then
-		block_head();
+		iDidItAll = block_head();
 	end
 
 	--Query current zone and subzone when talking head is triggered
@@ -92,23 +140,33 @@ function close_head()
 	if ENABLED == 1 then
 		--Block the talking head unless its in the whitelist
 		if (has_value(WHITELIST, subZoneName) ~= true and has_value(WHITELIST, zoneName) ~= true) then
-			block_head();
+			iDidItAll = block_head();
 		end
 	--If disabled, check blacklist
 	elseif (has_value(BLACKLIST, subZoneName) or has_value(BLACKLIST, zoneName)) then
-		block_head();
+		iDidItAll = block_head();
+	end
+
+	if not iDidItAll then
+		add_tmp_keybind_that_closes()
+		-- note: the user's configured keybind will always be available
 	end
 end
 
+---@return boolean true if all possible actions were performed
 function block_head()
+	local c = 0
+
 	--Close the talking head
 	--TalkingHeadFrame:CloseImmediately(); pre 10.0.7
 	if not is_true(BQ_SHOW_HEADS) then
 		TalkingHeadFrame:Hide()
+		c = c + 1
 	end
 	if TalkingHeadFrame.voHandle ~= nil and VO_ENABLED == 0 then
 		--C_Timer.After(0.025, function() StopSound(TalkingHeadFrame.voHandle) end);
 		C_Timer.After(0.025, function() if TalkingHeadFrame.voHandle then StopSound(TalkingHeadFrame.voHandle) end end);
+		c = c + 1
 	end
 	if VERBOSE == 1 then
 		local blockedNothing = is_true(VO_ENABLED) and is_true(BQ_SHOW_HEADS)
@@ -116,12 +174,18 @@ function block_head()
 			msg_user("blocked a talking head! /bq verbose to turn this alert off.")
 		end
 	end
+
+	return c == 2
 end
 
 --Main function
 function f:OnEvent(event, ...)
 	if event == "PLAYER_LOGIN" then
 		hooksecurefunc(TalkingHeadFrame, "PlayCurrent", close_head);
+		hooksecurefunc(TalkingHeadFrame, "Close",            remove_tmp_keybind_that_closes);
+		hooksecurefunc(TalkingHeadFrame, "CloseImmediately", remove_tmp_keybind_that_closes);
+		hooksecurefunc(TalkingHeadFrame, "Close_OnFinished", remove_tmp_keybind_that_closes);
+
 		BQ.Options:init()
 	end
 end
@@ -319,6 +383,25 @@ function MyAddonCommands(args)
 		end
 	end
 
+	-- ESCAPE KEY --
+
+	local escOriginal = BQ_ENABLE_ESCAPE
+
+	if args == 'esc' then
+		msg_user ('esc (on | off | toggle) - allow the escape key to close the talking head or not')
+	elseif args == 'esc on' then
+		BQ_ENABLE_ESCAPE = true
+	elseif args == 'esc off' then
+		BQ_ENABLE_ESCAPE = false
+	elseif args == 'esc toggle' then
+		BQ_ENABLE_ESCAPE = not BQ_ENABLE_ESCAPE
+	end
+
+	if escOriginal ~= BQ_ENABLE_ESCAPE then
+		local msgOnOrOff = BQ_ENABLE_ESCAPE and "enabled to close" or "disabled from closing"
+		msg_user('Escape key is now ' ..msgOnOrOff.. ' the talking head frame')
+	end
+
 	if args == 'whitelist' then
 		msg_user('whitelist (currentzone | currentsubzone) - toggle whitelisting for the current major zone (Orgrimmar) or sub-zone (Valley of Strength).')
 	end
@@ -332,8 +415,8 @@ function MyAddonCommands(args)
 	end
 
 	if args == '' then
-		msg_user('version ' .. version)
-		msg_user('Options: config | on | off | toggle | verbose | whitelist | blacklist | reset | delete | show | vo')
+		msg_user('version ' .. BQ.versionLabel)
+		msg_user('Options: config | on | off | toggle | verbose | whitelist | blacklist | reset | delete | show | vo | esc')
 		msg_user('-----')
 		if ENABLED == 1 then
 			msg_user('is currently enabled.')

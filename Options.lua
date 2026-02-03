@@ -68,15 +68,29 @@ function Options:init()
                     return not is_true(BQ_SHOW_HEADS)
                 end,
             },
+            enableEscape = {
+                order = 65,
+                name = "Escape",
+                desc = "Enable the escape key to both close and silence the talking head",
+                type = "toggle",
+                set = function(optionsMenu, enableEscape)
+                    local msg = enableEscape and "Talking heads can now be shut down via the escape key." or "Escape key will have no effect on talking heads."
+                    msg_user(msg)
+                    BQ_ENABLE_ESCAPE = enableEscape
+                end,
+                get = function()
+                    return BQ_ENABLE_ESCAPE or false
+                end,
+            },
             warn_if_broke = {
                 order = 70,
                 hidden = function()
-                    local warn = is_true(VO_ENABLED) and is_true(BQ_SHOW_HEADS)
+                    local warn = is_true(VO_ENABLED) and is_true(BQ_SHOW_HEADS) and not BQ_ENABLE_ESCAPE
                     local hide = not warn
                     return hide
                 end,
                 type = 'description',
-                name = BQ_RED.."DISABLED! |r With neither Mute nor Hide, BeQuiet will effectively do nothing.",
+                name = BQ.RED.."DISABLED! |r With neither Mute, nor Hide, nor Escape, BeQuiet will effectively do nothing.",
             },
 
             -------------------------------------------------------------------------------
